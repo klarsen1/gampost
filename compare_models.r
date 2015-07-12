@@ -85,6 +85,8 @@ names(sxdf) <- c("x", "s_x")
 sxdf$sx <- 1/(1+exp(-sxdf$s_x-coef(gam1.model)[1]))
 gamplot <- ggplot(data=sxdf, aes(x=x, y=sx)) + geom_line() + ggtitle("GAM (lambda=0.6)") + scale_y_continuous(limits = c(0.15, 0.6))
 
+## Check the concurvity
+concurvity(gam1.model,full=FALSE)
 
 multiplot(rfplot, gamplot, cols=2)
 
