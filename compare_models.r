@@ -69,7 +69,7 @@ p <- plot.variable(x=rf.grow, "N_OPEN_REV_ACTS", partial=TRUE)
 p_df <- cbind.data.frame(p$pData[[1]]$x.uniq, p$pData[[1]]$yhat)
 names(p_df) <- c("x", "p_y")
 p_df$p_y <- 1 - p_df$p_y
-rfplot <- ggplot(data=p_df, aes(y=p_y, x=x)) + geom_line()
+rfplot <- ggplot(data=p_df, aes(y=p_y, x=x)) + geom_line() + ggtitle("Random Forest") + scale_y_continuous(limits = c(0.15, 0.6))
 
 ########## GAM using variables selected by RandomForest, and smoothing all parameters = 0.6.
 f <- CreateGAMFormula(train[,variables], "PURCHASE", 0.6, "regspline")
@@ -83,7 +83,7 @@ gam1.lpmat <- predict(gam1.model, type="lpmatrix")
 sxdf <- cbind.data.frame(train[[x]], gam1.lpmat[,grepl(x, colnames(gam1.lpmat))] %*% coef(gam1.model)[grepl(x, names(coef(gam1.model)))])
 names(sxdf) <- c("x", "s_x")
 sxdf$sx <- 1/(1+exp(-sxdf$s_x-coef(gam1.model)[1]))
-gamplot <- ggplot(data=sxdf, aes(x=x, y=s_x)) + geom_line()
+gamplot <- ggplot(data=sxdf, aes(x=x, y=sx)) + geom_line() + ggtitle("GAM (lambda=0.6)") + scale_y_continuous(limits = c(0.15, 0.6))
 
 
 multiplot(rfplot, gamplot, cols=2)
