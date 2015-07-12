@@ -10,6 +10,9 @@ library(ggplot2)
 library(grid)
 library(kknn)
 library(Information)
+library(ClustOfVar)
+library(reshape2)
+library(plyr)
 
 ########## Setup
 options(scipen=10)
@@ -17,7 +20,7 @@ ProjectLocation <- "/Users/kimlarsen/Documents/Code/gampost/"
 
 source(paste0(ProjectLocation, "/miscfunctions.R"))
 
-nvars <- 21
+nvars <- 20
 
 
 ########## Read the data
@@ -31,32 +34,37 @@ View(IV$Summary)
 train <- train[,c(subset(IV$Summary, IV>0.05)$Variable, "PURCHASE")]
 valid <- valid[,c(subset(IV$Summary, IV>0.05)$Variable, "PURCHASE")]
 
+######## Variable clustering
+tree <- hclustvar(train[,!(names(train)=="PURCHASE")])
+##nclusters <- length(tree[tree$height<0.7])
+part_init<-cutreevar(tree,nvars)$cluster
+kmeans<-kmeansvar(X.quanti=train[,!(names(train)=="PURCHASE")],init=part_init)
+clusters <- cbind.data.frame(melt(kmeans$cluster), row.names(melt(kmeans$cluster)))
+names(clusters) <- c("Cluster", "Variable")
+clusters <- join(clusters, IV$Summary, by="Variable", type="left")
+clusters <- clusters[order(clusters$Cluster),]
+clusters$Rank <- ave(-clusters$IV, clusters$Cluster, FUN=rank)
+View(clusters)
+variables <- as.character(subset(clusters, Rank==1)$Variable)
+
+
 ####### Check out a WOE table
 View(IV$Tables$N_OPEN_REV_ACTS)
 
 ########## Random Forest
-train$CPURCHASE <- as.factor(train$PURCHASE)
-valid$CPURCHASE <- as.factor(valid$PURCHASE)
-
-## Grow an initial forest to determine the number of trees and variables
-rf.init <- rfsrc(CPURCHASE ~ ., data=train[,!(names(train) == "PURCHASE")], ntree=500, seed=2015)
-
-imp <- cbind.data.frame(row.names(rf.init$importance), rf.init$importance[,"1"]) 
-names(imp) <- c("Variable", "Importance")
-imp <- imp[order(-imp$Importance),]
-imp$Variable <- as.character(imp$Variable)
-imp$Rank <- ave(1:nrow(imp), imp$Importance, FUN=mean)
-View(imp)
-
-plot(rf.init)
+train$CPURCHASE <- ifelse(train$PURCHASE==1, 1, -1)
+valid$CPURCHASE <- ifelse(valid$PURCHASE==1, 1, -1)
+train$CPURCHASE <- as.factor(train$CPURCHASE)
+valid$CPURCHASE <- as.factor(valid$CPURCHASE)
 
 system.time(
-  rf.grow <- rfsrc(CPURCHASE ~ ., data=train[,c("CPURCHASE", subset(imp, Rank<nvars)$Variable)], ntree=100, seed=2015)
+  rf.grow <- rfsrc(CPURCHASE ~ ., data=train[,c("CPURCHASE", variables)], ntree=100, seed=2015)
 )
 system.time(
   rf.pred <- predict(rf.grow, newdata=valid, outcome="train")
 )
 paste0("RF: ", AUC(valid$PURCHASE, rf.pred$predicted[,2])[1])
+
 p <- plot.variable(x=rf.grow, "N_OPEN_REV_ACTS", partial=TRUE)
 p_df <- cbind.data.frame(p$pData[[1]]$x.uniq, p$pData[[1]]$yhat)
 names(p_df) <- c("x", "p_y")
@@ -64,7 +72,7 @@ p_df$p_y <- 1 - p_df$p_y
 rfplot <- ggplot(data=p_df, aes(y=p_y, x=x)) + geom_line()
 
 ########## GAM using variables selected by RandomForest, and smoothing all parameters = 0.6.
-f <- CreateGAMFormula(train[,subset(imp, Rank<nvars)$Variable], "PURCHASE", 0.6, "regspline")
+f <- CreateGAMFormula(train[,variables], "PURCHASE", 0.6, "regspline")
 system.time(
   gam1.model <- mgcv::gam(f, data=train, family=binomial(link="logit"))
 )
@@ -87,8 +95,8 @@ system.time(
 )
 paste0("GAM1: ", AUC(valid$PURCHASE, gam1.predict)[1])
 
-########## GAM using bam and variables selected by RandomForest. Select smoothing parameters with REML.
-f <- CreateGAMFormula(train[,subset(imp, Rank<nvars)$Variable], "PURCHASE", -1, "regspline")
+########## GAM where smoothing parameters are selected with REML.
+f <- CreateGAMFormula(train[,variables], "PURCHASE", -1, "regspline")
 system.time(
   gam2.model <- mgcv::gam(f, data=train, family=binomial(link="logit"), method="REML")
 )
@@ -100,26 +108,41 @@ system.time(
 paste0("GAM2: ", AUC(valid[["PURCHASE"]], gam2.predict)[1])
 
 
-########## SVM
+########## SVM (radial Gaussian kernel)
 ## You can use tune.svm to tune the cost parameter, or fit the model directly 
 ## tuned <- tune(svm, CPURCHASE~., data=train[,!(names(train)=="PURCHASE")], cost=c(0.01, 0.1, 1), kernel="polynomial", degree=3, probability=TRUE)
 ## best model can be found in: tuned$best.model
 
 system.time(
-svm.model <- svm(CPURCHASE~., data=train[,c("CPURCHASE", subset(imp, Rank<nvars)$Variable)], cost=0.001, gamma=0.000001, kernel="radial", degree=3, probability=TRUE)
+svm.model1 <- svm(CPURCHASE~., data=train[,c("CPURCHASE", variables)], cost=0.001, gamma=0.000001, kernel="radial", probability=TRUE)
 )
 
 system.time(
-svm.pred <- predict(svm.model,newdata=valid,probability=TRUE)
+svm.pred1 <- predict(svm.model1,newdata=valid,probability=TRUE)
 )
-svm.prob <- as.numeric(attr(svm.pred, "probabilities")[,2])
+svm.prob1 <- as.numeric(attr(svm.pred1, "probabilities")[,2])
 
-paste0("SVM: ", AUC(valid[["PURCHASE"]], svm.prob)[1])
+paste0("SVM (radial): ", AUC(valid[["PURCHASE"]], svm.prob1)[1])
 
+########## SVM (poly kernel, order=3)
+## You can use tune.svm to tune the cost parameter, or fit the model directly 
+## tuned <- tune(svm, CPURCHASE~., data=train[,!(names(train)=="PURCHASE")], cost=c(0.01, 0.1, 1), kernel="polynomial", degree=3, probability=TRUE)
+## best model can be found in: tuned$best.model
+
+system.time(
+  svm.model2 <- svm(CPURCHASE~., data=train[,c("CPURCHASE", variables)], cost=0.001, kernel="polynomial", degree=3, probability=TRUE)
+)
+
+system.time(
+  svm.pred2 <- predict(svm.model2,newdata=valid,probability=TRUE)
+)
+svm.prob2 <- as.numeric(attr(svm.pred2, "probabilities")[,2])
+
+paste0("SVM (poly): ", AUC(valid[["PURCHASE"]], svm.prob2)[1])
 
 ########## Logit model
 system.time(
-logit.model <- glm(PURCHASE ~ ., data=train[,c("PURCHASE", subset(imp, Rank<nvars)$Variable)], family=binomial(link="logit"))
+logit.model <- glm(PURCHASE ~ ., data=train[,c("PURCHASE", variables)], family=binomial(link="logit"))
 )
 system.time(
 logit.predict <- 1/(1+exp(-predict(logit.model, newdata=valid)))
@@ -130,7 +153,7 @@ print(paste0("Linear logit: ", AUC(valid[["PURCHASE"]], logit.predict)[1]))
 system.time(
 knn.classifier <- 
             kknn(CPURCHASE ~ ., 
-            train=train[,c("CPURCHASE", subset(imp, Rank<nvars)$Variable)], 
+            train=train[,c("CPURCHASE", variables)], 
             test=valid, 
             na.action = na.omit(),
             distance=2,
