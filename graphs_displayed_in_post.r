@@ -67,6 +67,7 @@ for (i in 1:7){
 
 e <- mean((d7$z-d7$Spline)**2)
 e
+ggplot(data=d7, aes(x=x, y=y)) + geom_point() + geom_line(data=d7, aes(x=x, y=Spline), linetype=1) + ylab("") +  geom_line(aes(x=x, y=z), linetype=2)
 p7 <- ggplot(data=d7, aes(x=x, y=y)) + geom_point() + geom_line(data=d7, aes(x=x, y=Spline), linetype=1) + ylab("") +  geom_line(aes(x=x, y=z), linetype=2) + ggtitle(paste0("B-Spline, MSE = ", round(e,2)))
 p7
 

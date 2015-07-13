@@ -77,19 +77,8 @@ system.time(
   gam1.model <- mgcv::gam(f, data=train, family=binomial(link="logit"))
 )
 
-### Plot a function using the lpmatrix:
-x <- "N_OPEN_REV_ACTS"
-gam1.lpmat <- predict(gam1.model, type="lpmatrix")
-sxdf <- cbind.data.frame(train[[x]], gam1.lpmat[,grepl(x, colnames(gam1.lpmat))] %*% coef(gam1.model)[grepl(x, names(coef(gam1.model)))])
-names(sxdf) <- c("x", "s_x")
-sxdf$sx <- 1/(1+exp(-sxdf$s_x-coef(gam1.model)[1]))
-gamplot <- ggplot(data=sxdf, aes(x=x, y=sx)) + geom_line() + ggtitle("GAM (lambda=0.6)") + scale_y_continuous(limits = c(0.15, 0.6))
-
 ## Check the concurvity
 concurvity(gam1.model,full=FALSE)
-
-multiplot(rfplot, gamplot, cols=2)
-
 
 ### Predict the probabilities for the validation dataset.
 system.time(
@@ -109,6 +98,27 @@ system.time(
 )
 paste0("GAM2: ", AUC(valid[["PURCHASE"]], gam2.predict)[1])
 
+########## GAM where smoothing parameters are selected with REML and weak variables are shrunk (selection=TRUE).
+f <- CreateGAMFormula(data=train[,variables], y="PURCHASE", type="none")
+system.time(
+  gam3.model <- mgcv::gam(f, data=train, family=binomial(link="logit"), method="REML", select=TRUE)
+)
+
+### Predict the probabilities for the validation dataset.
+system.time(
+  gam3.predict <- 1/(1+exp(-predict(gam3.model, newdata=valid)))
+)
+paste0("GAM3: ", AUC(valid[["PURCHASE"]], gam3.predict)[1])
+
+### Plot a function using the lpmatrix:
+x <- "N_OPEN_REV_ACTS"
+gam1.lpmat <- predict(gam3.model, type="lpmatrix")
+sxdf <- cbind.data.frame(train[[x]], gam1.lpmat[,grepl(x, colnames(gam1.lpmat))] %*% coef(gam1.model)[grepl(x, names(coef(gam1.model)))])
+names(sxdf) <- c("x", "s_x")
+sxdf$sx <- 1/(1+exp(-sxdf$s_x-coef(gam1.model)[1]))
+gamplot <- ggplot(data=sxdf, aes(x=x, y=sx)) + geom_line() + ggtitle("GAM (lambda=0.6)") + scale_y_continuous(limits = c(0.15, 0.6))
+
+multiplot(rfplot, gamplot, cols=2)
 
 ########## SVM (radial Gaussian kernel)
 ## You can use tune.svm to tune the cost parameter, or fit the model directly 
