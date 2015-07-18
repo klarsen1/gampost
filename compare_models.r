@@ -50,6 +50,7 @@ variables <- as.character(subset(clusters, Rank==1)$Variable)
 
 ####### Check out a WOE table
 View(IV$Tables$N_OPEN_REV_ACTS)
+View(IV$Tables$RATIO_RETAIL_BAL2HI_CRDT)
 
 ########## Random Forest
 train$CPURCHASE <- ifelse(train$PURCHASE==1, 1, -1)
@@ -65,11 +66,20 @@ system.time(
 )
 paste0("RF: ", AUC(valid$PURCHASE, rf.pred$predicted[,2])[1])
 
+rf.grow$importance
+
 p <- plot.variable(x=rf.grow, "N_OPEN_REV_ACTS", partial=TRUE)
 p_df <- cbind.data.frame(p$pData[[1]]$x.uniq, p$pData[[1]]$yhat)
 names(p_df) <- c("x", "p_y")
 p_df$p_y <- 1 - p_df$p_y
-rfplot <- ggplot(data=p_df, aes(y=p_y, x=x)) + geom_line() + ggtitle("Random Forest") + scale_y_continuous(limits = c(0.15, 0.6))
+rfplot1 <- ggplot(data=p_df, aes(y=p_y, x=x)) + geom_line() + ggtitle("Random Forest") + scale_y_continuous(limits = c(0.15, 0.6)) + ylab("P(Y=1)")
+
+p <- plot.variable(x=rf.grow, "RATIO_RETAIL_BAL2HI_CRDT", partial=TRUE)
+p_df <- cbind.data.frame(p$pData[[1]]$x.uniq, p$pData[[1]]$yhat)
+names(p_df) <- c("x", "p_y")
+p_df$p_y <- 1 - p_df$p_y
+rfplot2 <- ggplot(data=subset(p_df, x<=100), aes(y=p_y, x=x)) + geom_line() + ggtitle("Random Forest") + scale_y_continuous(limits = c(0.15, 0.3)) + ylab("P(Y=1)")
+
 
 ########## GAM using variables selected by RandomForest, and smoothing all parameters = 0.6.
 f <- CreateGAMFormula(train[,variables], "PURCHASE", 0.6, "regspline")
@@ -89,7 +99,7 @@ paste0("GAM1: ", AUC(valid$PURCHASE, gam1.predict)[1])
 ########## GAM where smoothing parameters are selected with REML.
 f <- CreateGAMFormula(train[,variables], "PURCHASE", -1, "regspline")
 system.time(
-  gam2.model <- mgcv::gam(f, data=train, family=binomial(link="logit"), method="REML")
+  gam2.model <- mgcv::gam(f, data=train, family=binomial(link="logit"), method="REML", control=list(nthreads=4))
 )
 
 ### Predict the probabilities for the validation dataset.
@@ -101,7 +111,7 @@ paste0("GAM2: ", AUC(valid[["PURCHASE"]], gam2.predict)[1])
 ########## GAM where smoothing parameters are selected with REML and weak variables are shrunk (selection=TRUE).
 f <- CreateGAMFormula(data=train[,variables], y="PURCHASE", type="none")
 system.time(
-  gam3.model <- mgcv::gam(f, data=train, family=binomial(link="logit"), method="REML", select=TRUE)
+  gam3.model <- mgcv::gam(f, data=train, family=binomial(link="logit"), method="REML", select=TRUE, control = list(nthreads=4))
 )
 
 ### Predict the probabilities for the validation dataset.
@@ -112,13 +122,22 @@ paste0("GAM3: ", AUC(valid[["PURCHASE"]], gam3.predict)[1])
 
 ### Plot a function using the lpmatrix:
 x <- "N_OPEN_REV_ACTS"
-gam1.lpmat <- predict(gam3.model, type="lpmatrix")
+gam1.lpmat <- predict(gam1.model, type="lpmatrix")
 sxdf <- cbind.data.frame(train[[x]], gam1.lpmat[,grepl(x, colnames(gam1.lpmat))] %*% coef(gam1.model)[grepl(x, names(coef(gam1.model)))])
 names(sxdf) <- c("x", "s_x")
 sxdf$sx <- 1/(1+exp(-sxdf$s_x-coef(gam1.model)[1]))
-gamplot <- ggplot(data=sxdf, aes(x=x, y=sx)) + geom_line() + ggtitle("GAM (lambda=0.6)") + scale_y_continuous(limits = c(0.15, 0.6))
+gamplot1 <- ggplot(data=sxdf, aes(x=x, y=sx)) + geom_line() + ggtitle("GAM (lambda=0.6)") + scale_y_continuous(limits = c(0.15, 0.6))  + ylab("")
 
-multiplot(rfplot, gamplot, cols=2)
+x <- "RATIO_RETAIL_BAL2HI_CRDT"
+gam1.lpmat <- predict(gam1.model, type="lpmatrix")
+sxdf <- cbind.data.frame(train[[x]], gam1.lpmat[,grepl(x, colnames(gam1.lpmat))] %*% coef(gam1.model)[grepl(x, names(coef(gam1.model)))])
+names(sxdf) <- c("x", "s_x")
+sxdf$sx <- 1/(1+exp(-sxdf$s_x-coef(gam1.model)[1]))
+gamplot2 <- ggplot(data=subset(sxdf, x<=100), aes(x=x, y=sx)) + geom_line() + ggtitle("GAM (lambda=0.6)") + scale_y_continuous(limits = c(0.15, 0.30)) +ylab("")
+
+multiplot(rfplot1, gamplot1, cols=2)
+
+multiplot(rfplot2, gamplot2, cols=2)
 
 ########## SVM (radial Gaussian kernel)
 ## You can use tune.svm to tune the cost parameter, or fit the model directly 
