@@ -19,6 +19,7 @@ p1 <- ggplot(data=d, aes(x=x, y=y)) + geom_point() + geom_line(data=d1, aes(x=x,
 
 d2 <- cbind.data.frame(data.frame(predict(smooth.spline(x=d, spar=0.3), x)), z)
 e <- sqrt(sum((d2$z-d2$y)**2))
+p2 <- ggplot(data=d, aes(x=x, y=y)) + geom_point() + geom_line(data=d1, aes(x=x, y=y), linetype=1) + geom_line(aes(x=x, y=z), linetype=2) + ggtitle(paste0("Lambda=0.3, Dist = ", round(e,2)))
 e
 
 d3 <- cbind.data.frame(data.frame(predict(smooth.spline(x=d, spar=0.6), x)), z)
