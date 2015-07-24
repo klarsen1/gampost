@@ -88,7 +88,7 @@ system.time(
 )
 
 ## Check the concurvity
-concurvity(gam1.model,full=FALSE)
+#concurvity(gam1.model,full=FALSE)
 
 ### Predict the probabilities for the validation dataset.
 system.time(
@@ -99,7 +99,7 @@ paste0("GAM1: ", AUC(valid$PURCHASE, gam1.predict)[1])
 ########## GAM where smoothing parameters are selected with REML.
 f <- CreateGAMFormula(train[,variables], "PURCHASE", -1, "regspline")
 system.time(
-  gam2.model <- mgcv::gam(f, data=train, family=binomial(link="logit"), method="REML", control=list(nthreads=4))
+  gam2.model <- mgcv::gam(f, data=train, family=binomial(link="logit"), method="REML")
 )
 
 ### Predict the probabilities for the validation dataset.
@@ -111,9 +111,10 @@ paste0("GAM2: ", AUC(valid[["PURCHASE"]], gam2.predict)[1])
 ########## GAM where smoothing parameters are selected with REML and weak variables are shrunk (selection=TRUE).
 f <- CreateGAMFormula(data=train[,variables], y="PURCHASE", type="none")
 system.time(
-  gam3.model <- mgcv::gam(f, data=train, family=binomial(link="logit"), method="REML", select=TRUE, control = list(nthreads=4))
+  gam3.model <- mgcv::gam(f, data=train, family=binomial(link="logit"), method="REML", select=TRUE)
 )
 
+#, control = list(nthreads=4) 
 ### Predict the probabilities for the validation dataset.
 system.time(
   gam3.predict <- 1/(1+exp(-predict(gam3.model, newdata=valid)))
@@ -168,6 +169,8 @@ system.time(
   svm.pred2 <- predict(svm.model2,newdata=valid,probability=TRUE)
 )
 svm.prob2 <- as.numeric(attr(svm.pred2, "probabilities")[,2])
+
+print(attr(svm.pred2))
 
 paste0("SVM (poly): ", AUC(valid[["PURCHASE"]], svm.prob2)[1])
 
