@@ -145,8 +145,10 @@ multiplot(rfplot2, gamplot2, cols=2)
 ## tuned <- tune(svm, CPURCHASE~., data=train[,!(names(train)=="PURCHASE")], cost=c(0.01, 0.1, 1), kernel="polynomial", degree=3, probability=TRUE)
 ## best model can be found in: tuned$best.model
 
+# gamma=0.000001
+
 system.time(
-svm.model1 <- svm(CPURCHASE~., data=train[,c("CPURCHASE", variables)], cost=0.001, gamma=0.000001, kernel="radial", probability=TRUE)
+svm.model1 <- svm(CPURCHASE~., data=train[,c("CPURCHASE", variables)], cost=0.01, kernel="radial", probability=TRUE)
 )
 
 system.time(
